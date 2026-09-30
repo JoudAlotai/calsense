@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CalSense Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one instrument panel (controls | live kinetic chart), then how-it-works, status and references in a single reading column */
+:root{
+  --bg:#F3F6F5; --surface:#FFFFFF; --ink:#10302D; --muted:#4E6A66; --line:#D5DFDC; --grid:#E6EDEB;
+  --accent:#6E2A84; --c1:#C39AD6; --c2:#8B46A6; --c3:#4B1A60; --ref:#7F8F8C; --band:rgba(139,70,166,.14);
+  --good:#1D6F47; --warn:#8A5A0F; --bad:#A1261D; --goodbg:#E3F2EA; --warnbg:#F8EEDB; --badbg:#F8E3E1;
+  --f-body:'IBM Plex Sans Arabic',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0D1716; --surface:#142220; --ink:#E3EEEC; --muted:#9DB5B1; --line:#27403C; --grid:#1D302D;
+  --accent:#D3A6E6; --c1:#8A5A9E; --c2:#C38BDD; --c3:#EFD7F8; --ref:#8FA39F; --band:rgba(195,139,221,.18);
+  --good:#7FD6A6; --warn:#E8BE6A; --bad:#F09A92; --goodbg:#16362A; --warnbg:#3A2F16; --badbg:#3E1E1B; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1716; --surface:#142220; --ink:#E3EEEC; --muted:#9DB5B1; --line:#27403C; --grid:#1D302D;
+  --accent:#D3A6E6; --c1:#8A5A9E; --c2:#C38BDD; --c3:#EFD7F8; --ref:#8FA39F; --band:rgba(195,139,221,.18);
+  --good:#7FD6A6; --warn:#E8BE6A; --bad:#F09A92; --goodbg:#16362A; --warnbg:#3A2F16; --badbg:#3E1E1B; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:20px;padding-block:28px 56px;display:flex;flex-direction:column;gap:32px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.brand h1{margin:0;font-size:clamp(30px,5vw,44px);line-height:1.1;letter-spacing:-.5px;text-wrap:balance}
+.brand p{margin:6px 0 0;color:var(--muted);font-size:17px;max-width:60ch}
+.tag{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.lang{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--surface)}
+.lang button{font:inherit;font-size:14px;border:0;background:transparent;color:var(--muted);padding:8px 16px;cursor:pointer;min-height:40px}
+.lang button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);overflow:hidden}
+.controls{padding:22px;border-inline-end:1px solid var(--line);display:flex;flex-direction:column;gap:20px}
+.controls h2,.chartbox h2{margin:0;font-size:18px}
+.ctl{display:flex;flex-direction:column;gap:6px}
+.ctl label{display:flex;justify-content:space-between;gap:8px;font-size:14px;font-weight:500}
+.ctl output{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--accent);font-weight:500}
+.ctl small{color:var(--muted);font-size:12.5px;line-height:1.45}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+.chartbox{padding:22px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:18px;height:3px;border-radius:2px;display:inline-block}
+.sw.dash{background:repeating-linear-gradient(90deg,var(--ref) 0 5px,transparent 5px 9px)}
+.chartwrap{position:relative;width:100%}
+svg.chart{width:100%;height:auto;display:block;touch-action:none}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.12);min-width:150px}
+.tip b{font-family:var(--f-mono);font-weight:500}
+.tip .row{display:flex;justify-content:space-between;gap:12px}
+.readouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.ro{border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.ro .k{font-size:12.5px;color:var(--muted)}
+.ro .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:500}
+.verdict{border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.verdict .v{font-family:var(--f-body);font-size:18px;font-weight:700}
+.verdict.good{background:var(--goodbg);color:var(--good)} .verdict.warn{background:var(--warnbg);color:var(--warn)} .verdict.bad{background:var(--badbg);color:var(--bad)}
+.verdict .k{color:inherit;opacity:.85}
+.note{font-size:13px;color:var(--muted);margin:0}
+section h2{font-size:22px;margin:0 0 12px;text-wrap:balance}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;list-style:none;padding:0;margin:0;counter-reset:s}
+.steps li{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;counter-increment:s;min-width:0}
+.steps li::before{content:counter(s);display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--bg);font-weight:700;margin-bottom:8px}
+.steps h3{margin:0 0 4px;font-size:17px}
+.steps p{margin:0;color:var(--muted);font-size:15px}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.two>div{min-width:0}
+.two p,.two li{max-width:65ch}
+.two ul,.two ol{margin:0;padding-inline-start:20px;display:flex;flex-direction:column;gap:6px}
+a{color:var(--accent)}
+footer{color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);padding-top:16px}
+[dir="rtl"] .ctl output,[dir="rtl"] .ro .v{direction:ltr}
+@media (max-width:820px){.panel{grid-template-columns:minmax(0,1fr)}.controls{border-inline-end:0;border-bottom:1px solid var(--line)}.steps,.two{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:480px){.readouts{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<style>html{color-scheme:light dark}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <div class="brand">
+      <span class="tag" data-t="tag"></span>
+      <h1>CalSense</h1>
+      <p data-t="sub"></p>
+    </div>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" id="btn-en" aria-pressed="true">English</button>
+      <button type="button" id="btn-ar" aria-pressed="false">العربية</button>
+    </div>
+  </header>
+
+  <div class="panel">
+    <div class="controls">
+      <h2 data-t="ctlTitle"></h2>
+      <div class="ctl">
+        <label for="temp"><span data-t="temp"></span><output id="o-temp" for="temp"></output></label>
+        <input type="range" id="temp" min="20" max="50" step="1" value="25">
+        <small data-t="tempHelp"></small>
+      </div>
+      <div class="ctl">
+        <label for="conc"><span data-t="conc"></span><output id="o-conc" for="conc"></output></label>
+        <input type="range" id="conc" min="6" max="14" step="0.5" value="9">
+        <small data-t="concHelp"></small>
+      </div>
+      <div class="ctl">
+        <label for="tread"><span data-t="tread"></span><output id="o-tread" for="tread"></output></label>
+        <input type="range" id="tread" min="1" max="10" step="0.5" value="5">
+      </div>
+      <div class="ctl">
+        <label for="noise"><span data-t="noise"></span><output id="o-noise" for="noise"></output></label>
+        <input type="range" id="noise" min="0.2" max="3" step="0.1" value="1">
+        <small data-t="noiseHelp"></small>
+      </div>
+    </div>
+
+    <div class="chartbox">
+      <h2 data-t="chartTitle"></h2>
+      <div class="legend" id="legend"></div>
+      <div class="chartwrap" id="cw">
+        <svg class="chart" id="chart" viewBox="0 0 720 380" role="img" aria-labelledby="chart-desc">
+          <desc id="chart-desc">Illustrative color signal versus time for three calcium concentrations at the selected temperature, with the heated 50 °C reference.</desc>
+          <g id="g-grid"></g><g id="g-band"></g><g id="g-lines"></g><g id="g-read"></g><g id="g-hover"></g>
+          <rect id="hit" x="60" y="16" width="640" height="310" fill="transparent"></rect>
+        </svg>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+      <div class="readouts">
+        <div class="ro"><div class="k" data-t="roFrac"></div><div class="v" id="r-frac"></div></div>
+        <div class="ro"><div class="k" data-t="roSnr"></div><div class="v" id="r-snr"></div></div>
+        <div class="verdict" id="r-verdict"><div class="k" data-t="roVerdict"></div><div class="v" id="r-vtext"></div></div>
+      </div>
+      <p class="note" data-t="modelNote"></p>
+    </div>
+  </div>
+
+  <section>
+    <h2 data-t="howTitle"></h2>
+    <ol class="steps">
+      <li><h3 data-t="s1h"></h3><p data-t="s1p"></p></li>
+      <li><h3 data-t="s2h"></h3><p data-t="s2p"></p></li>
+      <li><h3 data-t="s3h"></h3><p data-t="s3p"></p></li>
+    </ol>
+  </section>
+
+  <section class="two">
+    <div>
+      <h2 data-t="statusTitle"></h2>
+      <ul>
+        <li data-t="st1"></li>
+        <li data-t="st2"></li>
+        <li data-t="st3"></li>
+        <li data-t="st4"></li>
+      </ul>
+    </div>
+    <div>
+      <h2 data-t="refTitle"></h2>
+      <ol>
+        <li><a href="https://www.mdpi.com/2079-6374/16/4/183" target="_blank" rel="noopener">Rapid Finger-Pump Microfluidic Paper-Based Assay Platform for Monitoring Calcium Ions in Human Biofluids.</a> <i>Biosensors</i> 2026;16(4):183.</li>
+        <li><a href="https://www.frontiersin.org/journals/pediatrics/articles/10.3389/fped.2026.1761285/full" target="_blank" rel="noopener">Sanjad–Sakati syndrome: integrated emergency care, long-term management, and expert perspectives.</a> <i>Front. Pediatr.</i> 2026.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer data-t="foot"></footer>
+</div>
+
+<script>
+(function(){
+const T={
+ en:{tag:"SAIF 2026 · Biotechnology & Digital Health",sub:"Heater-free smartphone calcium sensing: read the early color change at room temperature instead of heating the test to 50 °C.",
+ ctlTitle:"Try it",temp:"Room temperature",tempHelp:"The published test is heated to 50 °C. Lower temperatures slow the color reaction.",
+ conc:"Calcium level",concHelp:"Typical blood range is roughly 8.5–10.5 mg/dL. The chart also shows 1 mg/dL below and above.",
+ tread:"Phone reads at",noise:"Camera noise (assumed)",noiseHelp:"How much the color reading wobbles between photos. The first real experiment will measure this.",
+ chartTitle:"How the paper's color signal develops",lg1:"−1 mg/dL",lg2:"Selected level",lg3:"+1 mg/dL",lgRef:"Heated to 50 °C (published method)",lgBand:"Noise range",
+ roFrac:"Color change finished at read time",roSnr:"Gap between levels ÷ noise",roVerdict:"Can the phone tell 1 mg/dL apart?",
+ vGood:"Yes, clearly",vWarn:"Borderline",vBad:"No, curves overlap",
+ axX:"Time (minutes)",axY:"Color signal (R+G−B)",read:"read",
+ modelNote:"Illustrative model, not measured data. Endpoint heights follow the calibration curve published in [1] at 50 °C; the room-temperature speed and the noise level are assumptions that the first experiment will test.",
+ howTitle:"How the idea works",s1h:"A drop on paper",s1p:"A drop of the sample goes on a paper spot with a reagent (murexide) whose color shifts with calcium.",
+ s2h:"The phone films the first minutes",s2p:"At room temperature the color never settles in time, so instead of heating, the phone records how the color changes, next to a color card and a thermometer.",
+ s3h:"A model predicts the level",s3p:"From the speed of the color change and the temperature, a model estimates the calcium concentration.",
+ statusTitle:"Where the project stands",st1:"Stage: concept and design. No experimental results yet.",st2:"First experiment: calcium standards of known concentration only, no human or patient samples.",st3:"Go / no-go: if the curves of different levels do not separate at room temperature within 10 minutes, the idea stops there.",st4:"Clinical use would need patient-sample validation, ethics approval and regulatory clearance.",
+ refTitle:"References",foot:"Joud Mohammed Alotaibi · SAIF 2026 · Concept demonstration for judges and visitors"},
+ ar:{tag:"سيف 2026 · التقنية الحيوية والصحة الرقمية",sub:"قراءة الكالسيوم بالجوال بدون سخّان: نقرأ تغيّر اللون في أول دقائق بحرارة الغرفة، بدل تسخين الاختبار إلى 50°م.",
+ ctlTitle:"جرّب بنفسك",temp:"حرارة الغرفة",tempHelp:"الطريقة المنشورة تسخّن الاختبار إلى 50°م. كل ما قلّت الحرارة صار التفاعل أبطأ.",
+ conc:"مستوى الكالسيوم",concHelp:"المدى المعتاد في الدم تقريباً 8.5 إلى 10.5 mg/dL. الرسم يعرض أيضاً مستوى أقل بواحد وأعلى بواحد.",
+ tread:"الجوال يقرأ عند",noise:"تذبذب الكاميرا (افتراضي)",noiseHelp:"مقدار اختلاف قراءة اللون بين صورة وصورة. أول تجربة حقيقية بتقيسه.",
+ chartTitle:"كيف يتطوّر لون الشريط مع الوقت",lg1:"أقل بـ1 mg/dL",lg2:"المستوى المختار",lg3:"أعلى بـ1 mg/dL",lgRef:"مع التسخين إلى 50°م (الطريقة المنشورة)",lgBand:"مدى التذبذب",
+ roFrac:"كم اكتمل تغيّر اللون عند القراءة",roSnr:"الفرق بين المستويات ÷ التذبذب",roVerdict:"هل يميّز الجوال فرق 1 mg/dL؟",
+ vGood:"نعم، بوضوح",vWarn:"على الحد",vBad:"لا، المنحنيات متداخلة",
+ axX:"الزمن (دقائق)",axY:"إشارة اللون (R+G−B)",read:"قراءة",
+ modelNote:"نموذج توضيحي وليس بيانات مقاسة. ارتفاع النهاية مأخوذ من منحنى المعايرة المنشور في [1] عند 50°م، أما سرعة التفاعل بحرارة الغرفة ومستوى التذبذب فهي افتراضات ستختبرها التجربة الأولى.",
+ howTitle:"كيف تشتغل الفكرة",s1h:"نقطة على الورق",s1p:"نضع نقطة من العينة على ورق فيه مادة كاشفة (الموركسيد) يتغيّر لونها مع الكالسيوم.",
+ s2h:"الجوال يصوّر أول دقائق",s2p:"بحرارة الغرفة اللون ما يثبت في وقت معقول، فبدل التسخين يسجّل الجوال كيف يتغيّر اللون، بجانب بطاقة ألوان ومقياس حرارة.",
+ s3h:"النموذج يتوقّع المستوى",s3p:"من سرعة تغيّر اللون ودرجة الحرارة، يقدّر النموذج تركيز الكالسيوم.",
+ statusTitle:"وين وصل المشروع",st1:"المرحلة: فكرة وتصميم، ولا توجد نتائج تجريبية بعد.",st2:"التجربة الأولى: محاليل كالسيوم معروفة التركيز فقط، بدون أي عينات بشرية أو مرضى.",st3:"قرار الاستمرار: إذا ما افترقت منحنيات المستويات المختلفة بحرارة الغرفة خلال 10 دقائق، تتوقف الفكرة عند هذا الحد.",st4:"الاستخدام الطبي يحتاج تحققاً على عينات مرضى وموافقة أخلاقية وتنظيمية.",
+ refTitle:"المراجع",foot:"جود محمد العتيبي · سيف 2026 · عرض توضيحي للفكرة للمحكّمين والزوار"}
+};
+let lang='en';
+try{const s=localStorage.getItem('calsense-lang');if(s==='ar'||s==='en')lang=s}catch(e){}
+
+const $=id=>document.getElementById(id);
+const NS='http://www.w3.org/2000/svg';
+const W=720,H=380,L=60,R=700,TOP=16,B=326,XMAX=10,YMAX=160;
+const x=t=>L+(R-L)*t/XMAX, y=v=>B-(B-TOP)*v/YMAX;
+const A=c=>47.273*Math.log(c)+28.890;               /* endpoint, R+G-B, from [1] */
+const EaR=9700, k50=1.0;                              /* assumed kinetics (per min) */
+const k=Tc=>k50*Math.exp(-EaR*(1/(Tc+273.15)-1/323.15));
+const S=(c,Tc,t)=>A(c)*(1-Math.exp(-k(Tc)*t));
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const a in attrs)e.setAttribute(a,attrs[a]);if(parent)parent.appendChild(e);return e}
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+function path(fn){let d='';for(let i=0;i<=100;i++){const t=XMAX*i/100;d+=(i?'L':'M')+x(t).toFixed(1)+' '+y(fn(t)).toFixed(1)}return d}
+
+function state(){return{T:+$('temp').value,C:+$('conc').value,tr:+$('tread').value,n:+$('noise').value}}
+
+function drawGrid(){
+  const g=$('g-grid');g.innerHTML='';const t=T[lang];
+  for(let v=0;v<=YMAX;v+=40){el('line',{x1:L,x2:R,y1:y(v),y2:y(v),stroke:css('--grid'),'stroke-width':1},g);
+    const tx=el('text',{x:L-8,y:y(v)+4,'text-anchor':'end','font-size':12,fill:css('--muted'),'font-family':'IBM Plex Mono, monospace'},g);tx.textContent=v}
+  for(let m=0;m<=XMAX;m+=2){const tx=el('text',{x:x(m),y:B+18,'text-anchor':'middle','font-size':12,fill:css('--muted'),'font-family':'IBM Plex Mono, monospace'},g);tx.textContent=m}
+  el('line',{x1:L,x2:R,y1:B,y2:B,stroke:css('--muted'),'stroke-width':1},g);
+  const xl=el('text',{x:(L+R)/2,y:B+42,'text-anchor':'middle','font-size':13,fill:css('--muted')},g);xl.textContent=t.axX;
+  const yl=el('text',{x:14,y:(TOP+B)/2,'text-anchor':'middle','font-size':13,fill:css('--muted'),transform:`rotate(-90 14 ${(TOP+B)/2})`},g);yl.textContent=t.axY;
+}
+
+function render(){
+  const s=state(),t=T[lang];
+  $('o-temp').textContent=s.T+' °C';$('o-conc').textContent=s.C.toFixed(1)+' mg/dL';$('o-tread').textContent=s.tr+' min';$('o-noise').textContent='±'+s.n.toFixed(1);
+  drawGrid();
+  const band=$('g-band');band.innerHTML='';
+  let up='',lo='';for(let i=0;i<=100;i++){const tt=XMAX*i/100,v=S(s.C,s.T,tt);up+=(i?'L':'M')+x(tt).toFixed(1)+' '+y(v+s.n).toFixed(1);lo=' L'+x(tt).toFixed(1)+' '+y(Math.max(0,v-s.n)).toFixed(1)+lo}
+  el('path',{d:up+lo+' Z',fill:css('--band'),stroke:'none'},band);
+  const g=$('g-lines');g.innerHTML='';
+  el('path',{d:path(tt=>S(s.C,50,tt)),fill:'none',stroke:css('--ref'),'stroke-width':2,'stroke-dasharray':'6 5'},g);
+  [[s.C-1,'--c1'],[s.C+1,'--c3'],[s.C,'--c2']].forEach(([c,col])=>el('path',{d:path(tt=>S(c,s.T,tt)),fill:'none',stroke:css(col),'stroke-width':c===s.C?3:2,'stroke-linecap':'round'},g));
+  const rg=$('g-read');rg.innerHTML='';
+  el('line',{x1:x(s.tr),x2:x(s.tr),y1:TOP,y2:B,stroke:css('--ink'),'stroke-width':1.5,'stroke-dasharray':'3 4'},rg);
+  const lab=el('text',{x:x(s.tr)+6,y:TOP+14,'font-size':12,fill:css('--ink')},rg);lab.textContent=t.read+' '+s.tr+' min';
+  [[s.C-1,'--c1'],[s.C,'--c2'],[s.C+1,'--c3']].forEach(([c,col])=>el('circle',{cx:x(s.tr),cy:y(S(c,s.T,s.tr)),r:5,fill:css(col),stroke:css('--surface'),'stroke-width':2},rg));
+  const frac=1-Math.exp(-k(s.T)*s.tr);
+  const gap=Math.min(S(s.C,s.T,s.tr)-S(s.C-1,s.T,s.tr),S(s.C+1,s.T,s.tr)-S(s.C,s.T,s.tr));
+  const snr=gap/s.n;
+  $('r-frac').textContent=Math.round(frac*100)+'%';
+  $('r-snr').textContent=snr.toFixed(1)+'×';
+  const v=$('r-verdict');v.className='verdict '+(snr>=3?'good':snr>=1.5?'warn':'bad');
+  $('r-vtext').textContent=snr>=3?t.vGood:snr>=1.5?t.vWarn:t.vBad;
+  $('legend').innerHTML=`<span><i class="sw" style="background:var(--c1)"></i>${t.lg1}</span><span><i class="sw" style="background:var(--c2);height:4px"></i>${t.lg2}</span><span><i class="sw" style="background:var(--c3)"></i>${t.lg3}</span><span><i class="sw dash"></i>${t.lgRef}</span><span><i class="sw" style="background:var(--band);height:10px"></i>${t.lgBand}</span>`;
+}
+
+function hover(ev){
+  const svg=$('chart'),r=svg.getBoundingClientRect(),px=(ev.clientX-r.left)*W/r.width;
+  const tt=Math.max(0,Math.min(XMAX,(px-L)/(R-L)*XMAX)),s=state(),t=T[lang];
+  const hg=$('g-hover');hg.innerHTML='';
+  el('line',{x1:x(tt),x2:x(tt),y1:TOP,y2:B,stroke:css('--muted'),'stroke-width':1},hg);
+  const tip=$('tip');tip.hidden=false;
+  const rows=[[t.lg1,S(s.C-1,s.T,tt)],[t.lg2,S(s.C,s.T,tt)],[t.lg3,S(s.C+1,s.T,tt)],['50 °C',S(s.C,50,tt)]];
+  tip.innerHTML=`<div><b>${tt.toFixed(1)} min</b></div>`+rows.map(([n,v])=>`<div class="row"><span>${n}</span><b>${v.toFixed(1)}</b></div>`).join('');
+  const cw=$('cw').getBoundingClientRect(),left=ev.clientX-cw.left;
+  tip.style.top='12px';tip.style.left=(left>cw.width/2?left-tip.offsetWidth-12:left+12)+'px';
+}
+function unhover(){$('g-hover').innerHTML='';$('tip').hidden=true}
+
+function applyLang(){
+  const t=T[lang];document.documentElement.lang=lang;$('app').dir=lang==='ar'?'rtl':'ltr';
+  document.querySelectorAll('[data-t]').forEach(n=>{n.textContent=t[n.dataset.t]});
+  $('btn-en').setAttribute('aria-pressed',lang==='en');$('btn-ar').setAttribute('aria-pressed',lang==='ar');
+  try{localStorage.setItem('calsense-lang',lang)}catch(e){}
+  render();
+}
+['temp','conc','tread','noise'].forEach(id=>$(id).addEventListener('input',render));
+$('btn-en').addEventListener('click',()=>{lang='en';applyLang()});
+$('btn-ar').addEventListener('click',()=>{lang='ar';applyLang()});
+const hit=$('hit');hit.addEventListener('pointermove',hover);hit.addEventListener('pointerdown',hover);hit.addEventListener('pointerleave',unhover);
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render)}catch(e){}
+new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+applyLang();
+})();
+</script>
+
+</body>
+</html>
